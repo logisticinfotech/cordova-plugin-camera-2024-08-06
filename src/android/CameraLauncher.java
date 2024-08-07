@@ -25,6 +25,7 @@ import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.database.Cursor;
@@ -99,7 +100,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
     private static final String TAKE_PICTURE_ACTION = "takePicture";
 
-    public static final int PERMISSION_DENIED_ERROR = 20;
+    public static final String PERMISSION_DENIED_ERROR = "does not have permission to access your images.";
     public static final int TAKE_PIC_SEC = 0;
     public static final int SAVE_TO_ALBUM_SEC = 1;
 
@@ -1352,7 +1353,11 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                                           int[] grantResults) {
         for (int r : grantResults) {
             if (r == PackageManager.PERMISSION_DENIED) {
-                this.callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.ERROR, PERMISSION_DENIED_ERROR));
+                ApplicationInfo applicationInfo = cordova.getActivity().getApplicationContext().getApplicationInfo();
+                int stringId = applicationInfo.labelRes;
+                String applicationName =  stringId == 0 ? applicationInfo.nonLocalizedLabel.toString() : cordova.getActivity().getApplicationContext().getString(stringId);
+
+                this.callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.ERROR, applicationName + ' ' + PERMISSION_DENIED_ERROR));
                 return;
             }
         }
