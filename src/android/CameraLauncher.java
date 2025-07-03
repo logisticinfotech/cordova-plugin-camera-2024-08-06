@@ -714,6 +714,11 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         if (getMimetypeForEncodingType().equals(mimeTypeOfOriginalFile)) {
             return fileName;
         }
+        // Replace only .heic extension with target encoding extension (e.g., .jpg)
+        if (fileName.toLowerCase().endsWith(".heic")) {
+          String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+          return baseName + getExtensionForEncodingType();
+        }
         // if the picture is not a jpeg or png, (a .heic for example) when processed to a bitmap
         // the file extension is changed to the output format, f.e. an input file my_photo.heic could become my_photo.jpg
         return fileName.substring(fileName.lastIndexOf(".") + 1) + getExtensionForEncodingType();
