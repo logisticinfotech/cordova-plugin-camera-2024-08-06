@@ -789,20 +789,37 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
                     // If sending filename back
                     else if (destType == FILE_URI) {
-                        // Did we modify the image?
-                        if ( (this.targetHeight > 0 && this.targetWidth > 0) ||
-                                (this.correctOrientation && this.orientationCorrected) ||
-                                !mimeTypeOfGalleryFile.equalsIgnoreCase(getMimetypeForEncodingType()))
-                        {
+                        // Modified image scenario
+                        if ((this.targetHeight > 0 && this.targetWidth > 0) ||
+                            (this.correctOrientation && this.orientationCorrected) ||
+                            !mimeTypeOfGalleryFile.equalsIgnoreCase(getMimetypeForEncodingType())) {
                             try {
                                 String modifiedPath = this.outputModifiedBitmap(bitmap, uri, mimeTypeOfGalleryFile);
-                                // The modified image is cached by the app in order to get around this and not have to delete you
-                                // application cache I'm adding the current system time to the end of the file url.
-                                this.callbackContext.success("file://" + modifiedPath + "?" + System.currentTimeMillis());
 
+                                // ✅ START: Copy EXIF from original HEIC to new JPEG
+                                try {
+                                    String originalPath = FileHelper.getRealPath(uri, this.cordova);
+                                    if (originalPath != null) {
+                                        ExifHelper exif = new ExifHelper();
+                                        exif.createInFile(originalPath);
+                                        exif.readExifData();
+
+                                        exif.createOutFile(modifiedPath);
+                                        exif.writeExifData();
+
+                                        LOG.d(LOG_TAG, "EXIF copied from: " + originalPath + " to: " + modifiedPath);
+                                    } else {
+                                        LOG.w(LOG_TAG, "Unable to resolve original path for EXIF transfer.");
+                                    }
+                                } catch (Exception exifException) {
+                                    LOG.e(LOG_TAG, "Failed to copy EXIF: " + exifException.getMessage(), exifException);
+                                }
+                                // ✅ END: EXIF handling
+
+                                this.callbackContext.success("file://" + modifiedPath + "?" + System.currentTimeMillis());
                             } catch (Exception e) {
                                 e.printStackTrace();
-                                this.failPicture("Error retrieving image: "+e.getLocalizedMessage());
+                                this.failPicture("Error retrieving image: " + e.getLocalizedMessage());
                             }
                         } else {
                             this.callbackContext.success(finalLocation);
