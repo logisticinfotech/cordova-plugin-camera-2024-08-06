@@ -33,7 +33,7 @@ import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
-import android.media.ExifInterface;
+import androidx.exifinterface.media.ExifInterface;
 import android.media.MediaScannerConnection;
 import android.media.MediaScannerConnection.MediaScannerConnectionClient;
 import android.net.Uri;
@@ -1051,7 +1051,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                 writeUncompressedImage(fileStream, galleryUri);
                 try {
                     String mimeType = FileHelper.getMimeType(imageUrl.toString(), cordova);
-                    if (JPEG_MIME_TYPE.equalsIgnoreCase(mimeType)) {
+                    if (JPEG_MIME_TYPE.equalsIgnoreCase(mimeType) || HEIC_MIME_TYPE.equalsIgnoreCase(mimeType)) {
                         //  ExifInterface doesn't like the file:// prefix
                         String filePath = galleryUri.toString().replace("file://", "");
                         // read exifData of source

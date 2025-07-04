@@ -97,6 +97,9 @@
         <preference name="ANDROIDX_CORE_VERSION" default="1.6.+"/>
         <framework src="androidx.core:core:$ANDROIDX_CORE_VERSION" />
 
+        <preference name="ANDROIDX_EXIF_INTERFACE_VERSION" default="1.4.1" />
+        <framework src="androidx.exifinterface:exifinterface:$ANDROIDX_EXIF_INTERFACE_VERSION" />
+
         <js-module src="www/CameraPopoverHandle.js" name="CameraPopoverHandle">
             <clobbers target="CameraPopoverHandle" />
           </js-module>
