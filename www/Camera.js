@@ -142,9 +142,15 @@ cameraExport.getPicture = function (successCallback, errorCallback, options) {
     const saveToPhotoAlbum = !!options.saveToPhotoAlbum;
     const popoverOptions = getValue(options.popoverOptions, null);
     const cameraDirection = getValue(options.cameraDirection, Camera.Direction.BACK);
+    var currentLatitude = null;
+    var currentLongitude = null;
+    if (options.currentLatitude && options.currentLongitude) {
+        currentLatitude = getValue(options.currentLatitude, null);
+        currentLongitude = getValue(options.currentLongitude, null);
+    }
 
     const args = [quality, destinationType, sourceType, targetWidth, targetHeight, encodingType,
-        mediaType, allowEdit, correctOrientation, saveToPhotoAlbum, popoverOptions, cameraDirection];
+        mediaType, allowEdit, correctOrientation, saveToPhotoAlbum, popoverOptions, cameraDirection, currentLatitude, currentLongitude];
 
     exec(successCallback, errorCallback, 'Camera', 'takePicture', args);
     // XXX: commented out

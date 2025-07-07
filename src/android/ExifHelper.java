@@ -22,7 +22,11 @@ import java.io.IOException;
 
 import androidx.exifinterface.media.ExifInterface;
 
+import org.apache.cordova.LOG;
+
 public class ExifHelper {
+    private static final String LOG_TAG = "EXIF Helper";
+
     private String aperture = null;
     private String datetime = null;
     private String dateTimeOriginal = null;
@@ -43,6 +47,11 @@ public class ExifHelper {
     private String model = null;
     private String orientation = null;
     private String whiteBalance = null;
+    private String software = null;
+    private String artist = null;
+    private String copyright = null;
+    private String imageDescription = null;
+    private String userComment = null;
 
     private ExifInterface inFile = null;
     private ExifInterface outFile = null;
@@ -71,7 +80,7 @@ public class ExifHelper {
      * Reads all the EXIF data from the input file.
      */
     public void readExifData() {
-        this.aperture = inFile.getAttribute(ExifInterface.TAG_APERTURE_VALUE);
+        this.aperture = inFile.getAttribute(ExifInterface.TAG_F_NUMBER);
         this.datetime = inFile.getAttribute(ExifInterface.TAG_DATETIME);
         this.dateTimeOriginal = inFile.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
         this.exposureTime = inFile.getAttribute(ExifInterface.TAG_EXPOSURE_TIME);
@@ -86,11 +95,16 @@ public class ExifHelper {
         this.gpsLongitudeRef = inFile.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF);
         this.gpsProcessingMethod = inFile.getAttribute(ExifInterface.TAG_GPS_PROCESSING_METHOD);
         this.gpsTimestamp = inFile.getAttribute(ExifInterface.TAG_GPS_TIMESTAMP);
-        this.iso = inFile.getAttribute(ExifInterface.TAG_ISO_SPEED);
+        this.iso = inFile.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS);
         this.make = inFile.getAttribute(ExifInterface.TAG_MAKE);
         this.model = inFile.getAttribute(ExifInterface.TAG_MODEL);
         this.orientation = inFile.getAttribute(ExifInterface.TAG_ORIENTATION);
         this.whiteBalance = inFile.getAttribute(ExifInterface.TAG_WHITE_BALANCE);
+        this.software = inFile.getAttribute(ExifInterface.TAG_SOFTWARE);
+        this.artist = inFile.getAttribute(ExifInterface.TAG_ARTIST);
+        this.copyright = inFile.getAttribute(ExifInterface.TAG_COPYRIGHT);
+        this.imageDescription = inFile.getAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION);
+        this.userComment = inFile.getAttribute(ExifInterface.TAG_USER_COMMENT);
     }
 
     /**
@@ -105,7 +119,7 @@ public class ExifHelper {
         }
 
         if (this.aperture != null) {
-            this.outFile.setAttribute(ExifInterface.TAG_APERTURE_VALUE, this.aperture);
+            this.outFile.setAttribute(ExifInterface.TAG_F_NUMBER, this.aperture);
         }
         if (this.datetime != null) {
             this.outFile.setAttribute(ExifInterface.TAG_DATETIME, this.datetime);
@@ -150,7 +164,7 @@ public class ExifHelper {
             this.outFile.setAttribute(ExifInterface.TAG_GPS_TIMESTAMP, this.gpsTimestamp);
         }
         if (this.iso != null) {
-            this.outFile.setAttribute(ExifInterface.TAG_ISO_SPEED, this.iso);
+            this.outFile.setAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS, this.iso);
         }
         if (this.make != null) {
             this.outFile.setAttribute(ExifInterface.TAG_MAKE, this.make);
@@ -164,27 +178,108 @@ public class ExifHelper {
         if (this.whiteBalance != null) {
             this.outFile.setAttribute(ExifInterface.TAG_WHITE_BALANCE, this.whiteBalance);
         }
+        if (this.software != null) {
+            this.outFile.setAttribute(ExifInterface.TAG_SOFTWARE, this.software);
+        }
+        if (this.artist != null) {
+            this.outFile.setAttribute(ExifInterface.TAG_ARTIST, this.artist);
+        }
+        if (this.copyright != null) {
+            this.outFile.setAttribute(ExifInterface.TAG_COPYRIGHT, this.copyright);
+        }
+        if (this.imageDescription != null) {
+            this.outFile.setAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION, this.imageDescription);
+        }
+        if (this.userComment != null) {
+            this.outFile.setAttribute(ExifInterface.TAG_USER_COMMENT, this.userComment);
+        }
 
         this.outFile.saveAttributes();
     }
 
     public int getOrientation() {
-        int o = Integer.parseInt(this.orientation);
-
-        if (o == ExifInterface.ORIENTATION_NORMAL) {
+        if (this.orientation == null) {
             return 0;
-        } else if (o == ExifInterface.ORIENTATION_ROTATE_90) {
-            return 90;
-        } else if (o == ExifInterface.ORIENTATION_ROTATE_180) {
-            return 180;
-        } else if (o == ExifInterface.ORIENTATION_ROTATE_270) {
-            return 270;
-        } else {
+        }
+
+        try {
+            int o = Integer.parseInt(this.orientation);
+
+            if (o == ExifInterface.ORIENTATION_NORMAL) {
+                return 0;
+            } else if (o == ExifInterface.ORIENTATION_ROTATE_90) {
+                return 90;
+            } else if (o == ExifInterface.ORIENTATION_ROTATE_180) {
+                return 180;
+            } else if (o == ExifInterface.ORIENTATION_ROTATE_270) {
+                return 270;
+            } else {
+                return 0;
+            }
+        } catch (NumberFormatException e) {
+            LOG.w(LOG_TAG, "Invalid orientation value: " + this.orientation);
             return 0;
         }
     }
 
     public void resetOrientation() {
         this.orientation = "" + ExifInterface.ORIENTATION_NORMAL;
+    }
+
+    /**
+     * Check if GPS data exists in the image
+     * @return true if GPS latitude and longitude exist, false otherwise
+     */
+    public boolean hasGpsData() {
+        return this.gpsLatitude != null && this.gpsLongitude != null;
+    }
+
+    /**
+     * Set GPS coordinates in the output file
+     * @param latitude latitude in decimal degrees
+     * @param longitude longitude in decimal degrees
+     */
+    public void setGpsCoordinates(double latitude, double longitude) {
+        // Convert decimal degrees to degrees, minutes, seconds format
+        String latRef = latitude >= 0 ? "N" : "S";
+        String lonRef = longitude >= 0 ? "E" : "W";
+
+        // Convert to absolute values for calculation
+        double absLat = Math.abs(latitude);
+        double absLon = Math.abs(longitude);
+
+        // Convert to degrees, minutes, seconds
+        int latDegrees = (int) absLat;
+        int latMinutes = (int) ((absLat - latDegrees) * 60);
+        double latSeconds = ((absLat - latDegrees - (latMinutes / 60.0)) * 3600);
+
+        int lonDegrees = (int) absLon;
+        int lonMinutes = (int) ((absLon - lonDegrees) * 60);
+        double lonSeconds = ((absLon - lonDegrees - (lonMinutes / 60.0)) * 3600);
+
+        // Format as rational numbers (numerator/denominator)
+        this.gpsLatitude = latDegrees + "/1," + latMinutes + "/1," + (int)(latSeconds * 1000) + "/1000";
+        this.gpsLongitude = lonDegrees + "/1," + lonMinutes + "/1," + (int)(lonSeconds * 1000) + "/1000";
+        this.gpsLatitudeRef = latRef;
+        this.gpsLongitudeRef = lonRef;
+
+        LOG.d(LOG_TAG, "GPS coordinates set - Latitude: " + latitude + " (" + this.gpsLatitude + " " + this.gpsLatitudeRef +
+              "), Longitude: " + longitude + " (" + this.gpsLongitude + " " + this.gpsLongitudeRef + ")");
+    }
+
+    /**
+     * Get GPS latitude
+     * @return GPS latitude string or null if not set
+     */
+    public String getGpsLatitude() {
+        return this.gpsLatitude;
+    }
+
+    /**
+     * Get GPS longitude
+     * @return GPS longitude string or null if not set
+     */
+    public String getGpsLongitude() {
+        return this.gpsLongitude;
     }
 }

@@ -43,8 +43,8 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import androidx.core.content.FileProvider;
 import android.util.Base64;
+import android.util.Log;
 
-import org.apache.cordova.BuildHelper;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.LOG;
@@ -135,6 +135,9 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     private ExifHelper exifData;            // Exif data from source
     private String applicationId;
 
+    // declare property for currentLatitude and currentLongitude
+    private double currentLatitude;
+    private double currentLongitude;
 
     /**
      * Executes the request and returns PluginResult.
@@ -171,6 +174,16 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
             this.allowEdit = args.getBoolean(7);
             this.correctOrientation = args.getBoolean(8);
             this.saveToPhotoAlbum = args.getBoolean(9);
+
+            // Handle latitude and longitude with error checking
+
+            if (args.length() > 13 && !args.isNull(12) && !args.isNull(13) ) {
+                this.currentLatitude = args.getDouble(12);
+                this.currentLongitude = args.getDouble(13);
+            } else {
+                this.currentLatitude = 0.0;
+                this.currentLongitude = 0.0;
+            }
 
             // If the user specifies a 0 or smaller width/height
             // make it -1 so later comparisons succeed
@@ -498,7 +511,6 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
      */
     private void processResultFromCamera(int destType, Intent intent) throws IOException {
         int rotate = 0;
-
         // Create an ExifHelper to save the exif data that is lost during compression
         ExifHelper exif = new ExifHelper();
 
@@ -509,10 +521,19 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         if (this.encodingType == JPEG) {
             try {
                 //We don't support PNG, so let's not pretend we do
+                // currentLatitude: 22.3024622 currentLongitude: 70.7647969
+                // If there is no exif gps data then add it
                 exif.createInFile(sourcePath);
                 exif.readExifData();
                 rotate = exif.getOrientation();
 
+                // Check if GPS data exists, if not add current coordinates
+                if (!exif.hasGpsData() && this.currentLatitude != 0.0 && this.currentLongitude != 0.0) {
+                    exif.setGpsCoordinates(this.currentLatitude, this.currentLongitude);
+                } else if (exif.hasGpsData()) {
+                    LOG.d(LOG_TAG, "GPS data already exists in image: " + exif.getGpsLatitude() + ", " + exif.getGpsLongitude());
+                }
+//                LOG.d(LOG_TAG, "processResultFromCamera exif: " + exif.);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -566,9 +587,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         // If sending filename back
         else if (destType == FILE_URI) {
             // If all this is true we shouldn't compress the image.
-            if (this.targetHeight == -1 && this.targetWidth == -1 && this.mQuality == 100 &&
-                    !this.correctOrientation) {
-
+            if (this.targetHeight == -1 && this.targetWidth == -1 && this.mQuality == 100 && !this.correctOrientation) {
                 // If we saved the uncompressed photo to the album, we can just
                 // return the URI we already created
                 if (this.saveToPhotoAlbum) {
@@ -607,18 +626,20 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
                 // Restore exif data to file
                 if (this.encodingType == JPEG) {
-                    String exifPath;
-                    exifPath = uri.getPath();
-                    //We just finished rotating it by an arbitrary orientation, just make sure it's normal
-                    if(rotate != ExifInterface.ORIENTATION_NORMAL)
-                        exif.resetOrientation();
-                    exif.createOutFile(exifPath);
-                    exif.writeExifData();
+                    try {
+                        String exifPath = uri.getPath();
+                        //We just finished rotating it by an arbitrary orientation, just make sure it's normal
+                        if(rotate != ExifInterface.ORIENTATION_NORMAL)
+                            exif.resetOrientation();
+                        exif.createOutFile(exifPath);
+                        exif.writeExifData();
+                    } catch (Exception e) {
+                        LOG.e(LOG_TAG, "Failed to restore EXIF data to camera capture: " + e.getMessage());
+                    }
                 }
 
                 // Send Uri back to JavaScript for viewing image
                 this.callbackContext.success(uri.toString());
-
             }
         } else {
             throw new IllegalStateException();
@@ -677,7 +698,6 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         return "";
     }
 
-
     private String outputModifiedBitmap(Bitmap bitmap, Uri uri, String mimeTypeOfOriginalFile) throws IOException {
         // Some content: URIs do not map to file paths (e.g. picasa).
         String realPath = FileHelper.getRealPath(uri, this.cordova);
@@ -700,6 +720,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                 exifData.writeExifData();
                 exifData = null;
             } catch (IOException e) {
+                LOG.e(LOG_TAG, "Failed to write EXIF data to modified bitmap: " + e.getMessage());
                 e.printStackTrace();
             }
         }
@@ -714,11 +735,14 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         if (getMimetypeForEncodingType().equals(mimeTypeOfOriginalFile)) {
             return fileName;
         }
+
         // Replace only .heic extension with target encoding extension (e.g., .jpg)
         if (fileName.toLowerCase().endsWith(".heic")) {
           String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
           return baseName + getExtensionForEncodingType();
+//          return baseName + "." + fileName.substring(fileName.lastIndexOf(".") + 1);
         }
+
         // if the picture is not a jpeg or png, (a .heic for example) when processed to a bitmap
         // the file extension is changed to the output format, f.e. an input file my_photo.heic could become my_photo.jpg
         return fileName.substring(fileName.lastIndexOf(".") + 1) + getExtensionForEncodingType();
@@ -747,27 +771,61 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         }
 
         String fileLocation = FileHelper.getRealPath(uri, this.cordova);
-        LOG.d(LOG_TAG, "File location is: " + fileLocation);
 
         String uriString = uri.toString();
         String finalLocation = fileLocation != null ? fileLocation : uriString;
         String mimeTypeOfGalleryFile = FileHelper.getMimeType(uriString, this.cordova);
+        String mimeTypeOfGalleryFileUsingExtension = FileHelper.getMimeTypeForExtension(finalLocation);
 
         if (finalLocation == null) {
             this.failPicture("Error retrieving result.");
         } else {
             // If you ask for video or the selected file cannot be processed
             // there will be no attempt to resize any returned data.
-            if (this.mediaType == VIDEO  || !isImageMimeTypeProcessable(mimeTypeOfGalleryFile)) {
+            if (this.mediaType == VIDEO  || (!isImageMimeTypeProcessable(mimeTypeOfGalleryFile) && !isImageMimeTypeProcessable(mimeTypeOfGalleryFileUsingExtension))) {
+                // ✅ START: Copy EXIF from original new JPEG
+                try {
+                    String originalPath = FileHelper.getRealPath(uri, this.cordova);
+                    if (originalPath != null) {
+                        ExifHelper exif = new ExifHelper();
+                        exif.createInFile(originalPath);
+                        exif.readExifData();
+
+                        exif.createOutFile(finalLocation);
+                        exif.writeExifData();
+                    } else {
+                        LOG.w(LOG_TAG, "Unable to resolve original path for EXIF transfer.");
+                    }
+                } catch (Exception exifException) {
+                    LOG.e(LOG_TAG, "Failed to copy EXIF: " + exifException.getMessage(), exifException);
+                }
+                // ✅ END: EXIF handling
                 this.callbackContext.success(finalLocation);
             } else {
-
                 // This is a special case to just return the path as no scaling,
                 // rotating, nor compressing needs to be done
                 if (this.targetHeight == -1 && this.targetWidth == -1 &&
                         destType == FILE_URI && !this.correctOrientation &&
                         getMimetypeForEncodingType().equalsIgnoreCase(mimeTypeOfGalleryFile))
                 {
+                    // ✅ START: Copy EXIF from original HEIC to new JPEG
+                    try {
+                        String originalPath = FileHelper.getRealPath(uri, this.cordova);
+                        if (originalPath != null) {
+                            ExifHelper exif = new ExifHelper();
+                            exif.createInFile(originalPath);
+                            exif.readExifData();
+
+                            exif.createOutFile(finalLocation);
+                            exif.writeExifData();
+                        } else {
+                            LOG.w(LOG_TAG, "Unable to resolve original path for EXIF transfer.");
+                        }
+                    } catch (Exception exifException) {
+                        LOG.e(LOG_TAG, "Failed to copy EXIF: " + exifException.getMessage(), exifException);
+                    }
+                    // ✅ END: EXIF handling
+
                     this.callbackContext.success(finalLocation);
                 } else {
                     Bitmap bitmap = null;
@@ -796,25 +854,50 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                             try {
                                 String modifiedPath = this.outputModifiedBitmap(bitmap, uri, mimeTypeOfGalleryFile);
 
-                                // ✅ START: Copy EXIF from original HEIC to new JPEG
+                                // ✅ START: Enhanced EXIF handling for Android 14
                                 try {
                                     String originalPath = FileHelper.getRealPath(uri, this.cordova);
                                     if (originalPath != null) {
+                                        // Create a new ExifHelper instance for this operation
                                         ExifHelper exif = new ExifHelper();
                                         exif.createInFile(originalPath);
                                         exif.readExifData();
 
                                         exif.createOutFile(modifiedPath);
                                         exif.writeExifData();
-
-                                        LOG.d(LOG_TAG, "EXIF copied from: " + originalPath + " to: " + modifiedPath);
                                     } else {
-                                        LOG.w(LOG_TAG, "Unable to resolve original path for EXIF transfer.");
+                                        // Fallback: try to get EXIF from the URI directly
+                                        try {
+                                            InputStream inputStream = FileHelper.getInputStreamFromUriString(uri.toString(), cordova);
+                                            if (inputStream != null) {
+                                                ExifHelper exif = new ExifHelper();
+                                                // Create a temporary file to read EXIF
+                                                File tempFile = File.createTempFile("exif_temp", getExtensionForEncodingType(), new File(getTempDirectoryPath()));
+                                                FileOutputStream tempOut = new FileOutputStream(tempFile);
+                                                byte[] buffer = new byte[4096];
+                                                int len;
+                                                while ((len = inputStream.read(buffer)) != -1) {
+                                                    tempOut.write(buffer, 0, len);
+                                                }
+                                                tempOut.close();
+                                                inputStream.close();
+
+                                                exif.createInFile(tempFile.getAbsolutePath());
+                                                exif.readExifData();
+
+                                                exif.createOutFile(modifiedPath);
+                                                exif.writeExifData();
+
+                                                tempFile.delete();
+                                            }
+                                        } catch (Exception fallbackException) {
+                                            LOG.w(LOG_TAG, "Fallback EXIF copy also failed: " + fallbackException.getMessage());
+                                        }
                                     }
                                 } catch (Exception exifException) {
-                                    LOG.e(LOG_TAG, "Failed to copy EXIF: " + exifException.getMessage(), exifException);
+                                   LOG.e(LOG_TAG, "Failed to copy EXIF: " + exifException.getMessage(), exifException);
                                 }
-                                // ✅ END: EXIF handling
+                                // ✅ END: Enhanced EXIF handling
 
                                 this.callbackContext.success("file://" + modifiedPath + "?" + System.currentTimeMillis());
                             } catch (Exception e) {
@@ -1411,6 +1494,8 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         state.putBoolean("allowEdit", this.allowEdit);
         state.putBoolean("correctOrientation", this.correctOrientation);
         state.putBoolean("saveToPhotoAlbum", this.saveToPhotoAlbum);
+        state.putDouble("currentLatitude", this.currentLatitude);
+        state.putDouble("currentLongitude", this.currentLongitude);
 
         if (this.croppedUri != null) {
             state.putString(CROPPED_URI_KEY, this.croppedFilePath);
@@ -1439,6 +1524,8 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         this.allowEdit = state.getBoolean("allowEdit");
         this.correctOrientation = state.getBoolean("correctOrientation");
         this.saveToPhotoAlbum = state.getBoolean("saveToPhotoAlbum");
+        this.currentLatitude = state.getDouble("currentLatitude");
+        this.currentLongitude = state.getDouble("currentLongitude");
 
         if (state.containsKey(CROPPED_URI_KEY)) {
             this.croppedUri = Uri.parse(state.getString(CROPPED_URI_KEY));
