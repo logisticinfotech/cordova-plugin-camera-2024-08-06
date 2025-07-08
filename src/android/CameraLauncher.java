@@ -33,6 +33,7 @@ import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+
 import androidx.exifinterface.media.ExifInterface;
 import android.media.MediaScannerConnection;
 import android.media.MediaScannerConnection.MediaScannerConnectionClient;
@@ -571,11 +572,9 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
             // Double-check the bitmap.
             if (bitmap == null) {
-                LOG.d(LOG_TAG, "I either have a null image path or bitmap");
                 this.failPicture("Unable to create bitmap!");
                 return;
             }
-
 
             this.processPicture(bitmap, this.encodingType);
 
@@ -611,11 +610,9 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
                 // Double-check the bitmap.
                 if (bitmap == null) {
-                    LOG.d(LOG_TAG, "I either have a null image path or bitmap");
                     this.failPicture("Unable to create bitmap!");
                     return;
                 }
-
 
                 // Add compressed version of captured image to returned media store Uri
                 OutputStream os = this.cordova.getActivity().getContentResolver().openOutputStream(uri);
@@ -701,7 +698,29 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     private String outputModifiedBitmap(Bitmap bitmap, Uri uri, String mimeTypeOfOriginalFile) throws IOException {
         // Some content: URIs do not map to file paths (e.g. picasa).
         String realPath = FileHelper.getRealPath(uri, this.cordova);
-        String fileName = calculateModifiedBitmapOutputFileName(mimeTypeOfOriginalFile, realPath);
+
+        // Try to extract filename from URI if realPath is null
+        String fileName;
+        if (realPath == null) {
+            // Fallback: try to get filename from URI
+            String uriString = uri.toString();
+            if (uriString.contains("/")) {
+                String lastSegment = uriString.substring(uriString.lastIndexOf("/") + 1);
+                // Remove any query parameters
+                if (lastSegment.contains("?")) {
+                    lastSegment = lastSegment.substring(0, lastSegment.indexOf("?"));
+                }
+                if (lastSegment.contains("#")) {
+                    lastSegment = lastSegment.substring(0, lastSegment.indexOf("#"));
+                }
+                fileName = calculateModifiedBitmapOutputFileName(mimeTypeOfOriginalFile, lastSegment);
+            } else {
+                // If URI doesn't contain "/", use a default name
+                fileName = calculateModifiedBitmapOutputFileName(mimeTypeOfOriginalFile, null);
+            }
+        } else {
+            fileName = calculateModifiedBitmapOutputFileName(mimeTypeOfOriginalFile, realPath);
+        }
 
         String modifiedPath = getTempDirectoryPath() + "/" + fileName;
 
@@ -731,7 +750,17 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         if (realPath == null) {
             return "modified" + getExtensionForEncodingType();
         }
-        String fileName = realPath.substring(realPath.lastIndexOf('/') + 1);
+
+        // Check if realPath is a full path or just a filename
+        String fileName;
+        if (realPath.contains("/")) {
+            // It's a full path, extract the filename
+            fileName = realPath.substring(realPath.lastIndexOf('/') + 1);
+        } else {
+            // It's already just a filename
+            fileName = realPath;
+        }
+        
         if (getMimetypeForEncodingType().equals(mimeTypeOfOriginalFile)) {
             return fileName;
         }
@@ -740,12 +769,17 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         if (fileName.toLowerCase().endsWith(".heic")) {
           String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
           return baseName + getExtensionForEncodingType();
-//          return baseName + "." + fileName.substring(fileName.lastIndexOf(".") + 1);
         }
 
-        // if the picture is not a jpeg or png, (a .heic for example) when processed to a bitmap
-        // the file extension is changed to the output format, f.e. an input file my_photo.heic could become my_photo.jpg
-        return fileName.substring(fileName.lastIndexOf(".") + 1) + getExtensionForEncodingType();
+        // For any other file type that needs conversion, preserve the original filename
+        // but change the extension to match the target encoding format
+        if (fileName.contains(".")) {
+            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+            return baseName + getExtensionForEncodingType();
+        } else {
+            // If no extension found, just append the target extension
+            return fileName + getExtensionForEncodingType();
+        }
     }
 
     private String getExtensionForEncodingType() {
