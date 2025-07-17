@@ -517,12 +517,26 @@ static NSString* toBase64(NSData* data) {
 
 - (NSString*)tempFilePath:(NSString*)extension
 {
-    NSString* docsPath = [NSTemporaryDirectory()stringByStandardizingPath];
-    // unique file name
-    NSTimeInterval timeStamp = [[NSDate date] timeIntervalSince1970];
-    NSNumber *timeStampObj = [NSNumber numberWithDouble: timeStamp];
-    NSString* filePath = [NSString stringWithFormat:@"%@/%@%ld.%@", docsPath, CDV_PHOTO_PREFIX, [timeStampObj longValue], extension];
+    return [self tempFilePath:extension withOriginalName:nil];
+}
 
+- (NSString*)tempFilePath:(NSString*)extension withOriginalName:(NSString*)originalName
+{
+    NSString* docsPath = [NSTemporaryDirectory()stringByStandardizingPath];
+    
+    NSString* fileName;
+    if (originalName && originalName.length > 0) {
+        // Use original filename but ensure it has the correct extension
+        NSString* baseName = [originalName stringByDeletingPathExtension];
+        fileName = [NSString stringWithFormat:@"%@.%@", baseName, extension];
+    } else {
+        // Fallback to timestamp-based naming
+        NSTimeInterval timeStamp = [[NSDate date] timeIntervalSince1970];
+        NSNumber *timeStampObj = [NSNumber numberWithDouble: timeStamp];
+        fileName = [NSString stringWithFormat:@"%@%ld.%@", CDV_PHOTO_PREFIX, [timeStampObj longValue], extension];
+    }
+    
+    NSString* filePath = [NSString stringWithFormat:@"%@/%@", docsPath, fileName];
     return filePath;
 }
 
@@ -559,6 +573,20 @@ static NSString* toBase64(NSData* data) {
     CDVPluginResult* result = nil;
     BOOL saveToPhotoAlbum = options.saveToPhotoAlbum;
     UIImage* image = nil;
+    
+    // Extract original filename if available
+    NSString* originalFileName = nil;
+    if (pickerController.sourceType == UIImagePickerControllerSourceTypePhotoLibrary) {
+        PHAsset* asset = [info objectForKey:@"UIImagePickerControllerPHAsset"];
+        if (asset) {
+            // Get the original filename from PHAsset
+            NSArray* resources = [PHAssetResource assetResourcesForAsset:asset];
+            if (resources.count > 0) {
+                PHAssetResource* resource = [resources firstObject];
+                originalFileName = resource.originalFilename;
+            }
+        }
+    }
 
     switch (options.destinationType) {
         case DestinationTypeDataUrl:
@@ -593,7 +621,7 @@ static NSString* toBase64(NSData* data) {
 
                     NSError* err = nil;
                     NSString* extension = self.pickerController.pictureOptions.encodingType == EncodingTypePNG ? @"png":@"jpg";
-                    NSString* filePath = [self tempFilePath:extension];
+                    NSString* filePath = [self tempFilePath:extension withOriginalName:originalFileName];
 
                     // save file
                     if (![imageDataWithExif writeToFile:filePath options:NSAtomicWrite error:&err]) {
@@ -606,7 +634,7 @@ static NSString* toBase64(NSData* data) {
                 } else if (pickerController.sourceType != UIImagePickerControllerSourceTypeCamera || !options.usesGeolocation) {
                     // No need to save file if usesGeolocation is true since it will be saved after the location is tracked
                     NSString* extension = options.encodingType == EncodingTypePNG? @"png" : @"jpg";
-                    NSString* filePath = [self tempFilePath:extension];
+                    NSString* filePath = [self tempFilePath:extension withOriginalName:originalFileName];
                     NSError* err = nil;
 
                     // save file
@@ -641,7 +669,7 @@ static NSString* toBase64(NSData* data) {
 
 - (NSString *) createTmpVideo:(NSString *) moviePath {
     NSString* moviePathExtension = [moviePath pathExtension];
-    NSString* copyMoviePath = [self tempFilePath:moviePathExtension];
+    NSString* copyMoviePath = [self tempFilePath:moviePathExtension withOriginalName:nil];
     NSFileManager* fileMgr = [[NSFileManager alloc] init];
     NSError *error;
     [fileMgr copyItemAtPath:moviePath toPath:copyMoviePath error:&error];
@@ -830,7 +858,7 @@ static NSString* toBase64(NSData* data) {
         {
             NSError* err = nil;
             NSString* extension = self.pickerController.pictureOptions.encodingType == EncodingTypePNG ? @"png":@"jpg";
-            NSString* filePath = [self tempFilePath:extension];
+            NSString* filePath = [self tempFilePath:extension withOriginalName:nil];
 
             // save file
             if (![imageDataWithExif writeToFile:filePath options:NSAtomicWrite error:&err]) {
