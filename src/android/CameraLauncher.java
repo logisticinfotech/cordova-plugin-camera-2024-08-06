@@ -628,10 +628,38 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                         //We just finished rotating it by an arbitrary orientation, just make sure it's normal
                         if(rotate != ExifInterface.ORIENTATION_NORMAL)
                             exif.resetOrientation();
+                        
+                        // Ensure we have the latest GPS data before writing
+                        if (!exif.hasGpsData() && this.currentLatitude != 0.0 && this.currentLongitude != 0.0) {
+                            exif.setGpsCoordinates(this.currentLatitude, this.currentLongitude);
+                        } else if (exif.hasGpsData()) {
+                            LOG.d(LOG_TAG, "GPS data already exists in image: " + exif.getGpsLatitude() + ", " + exif.getGpsLongitude());
+                        }
+                        
                         exif.createOutFile(exifPath);
                         exif.writeExifData();
+                        
+                        // Verify the EXIF data was written correctly
+                        try {
+                            ExifInterface verifyExif = new ExifInterface(exifPath);
+                            String gpsLat = verifyExif.getAttribute(ExifInterface.TAG_GPS_LATITUDE);
+                            String gpsLon = verifyExif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE);
+                            
+                            // If verification failed, try direct EXIF writing as fallback
+                            if (gpsLat == null && gpsLon == null && this.currentLatitude != 0.0 && this.currentLongitude != 0.0) {
+                                verifyExif.setAttribute(ExifInterface.TAG_GPS_LATITUDE, exif.getGpsLatitude());
+                                verifyExif.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, exif.getGpsLatitudeRef());
+                                verifyExif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE, exif.getGpsLongitude());
+                                verifyExif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, exif.getGpsLongitudeRef());
+                                verifyExif.saveAttributes();
+                            }
+                        } catch (Exception verifyException) {
+                            LOG.w(LOG_TAG, "EXIF verification failed: " + verifyException.getMessage());
+                        }
+                        
                     } catch (Exception e) {
                         LOG.e(LOG_TAG, "Failed to restore EXIF data to camera capture: " + e.getMessage());
+                        e.printStackTrace();
                     }
                 }
 

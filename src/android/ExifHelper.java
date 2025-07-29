@@ -282,4 +282,20 @@ public class ExifHelper {
     public String getGpsLongitude() {
         return this.gpsLongitude;
     }
+
+    /**
+     * Get GPS latitude reference
+     * @return GPS latitude reference string or null if not set
+     */
+    public String getGpsLatitudeRef() {
+        return this.gpsLatitudeRef;
+    }
+
+    /**
+     * Get GPS longitude reference
+     * @return GPS longitude reference string or null if not set
+     */
+    public String getGpsLongitudeRef() {
+        return this.gpsLongitudeRef;
+    }
 }
